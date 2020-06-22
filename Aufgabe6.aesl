@@ -1,0 +1,237 @@
+<!DOCTYPE aesl-source>
+<network>
+
+
+<!--list of global events-->
+
+
+<!--node Thymio II 0 auf DESKTOP-61QCTHC - 2468-->
+<node nodeId="{9ae53b2f-d73f-4340-88f6-7f4722710921}" name="Thymio II 0 auf DESKTOP-61QCTHC - 2468"><![CDATA[var fahrmodus = 0
+# 0 -> Manueller Modus
+# 1 -> Automatischer Modus
+var lichtmodus = 0
+# 0 -> dynamisches Licht
+# 1-> Manueller Modus
+
+var beschleunigungs_const = 10 # Beschreibt die Beschleunigungsschritte
+var kurve = 0 # Detektiert ob der Tymio im Manuellen Modus eine Kurve faehrt
+var prevSpeedL = 0 # Wird fuer die Kurvenfahrt verwendent udn beschreibt den Speed von vor der Kurve
+var prevSpeedR = 0
+var speedL = 0 # Gibt an wie schnell sich der Tymio faehrt
+var speedR = 0
+var hinderniss_stopp = 0 # Wird im Manuellen Modus verwendet, um eine Notbremsung durchzufuehren
+
+
+var red = 0
+var green = 0
+var blue = 0
+var lichtmodus_state= 0 # Wird im dynamischen Farbmodus verwendet
+call leds.buttons(0,0,0,0)
+call leds.top(0,32,0)
+
+onevent rc5
+	call leds.buttons(0,32,32,0)
+# Modus auswahl
+#Fahrmodus
+	if  (rc5.address == 1 and rc5.command == 0) or rc5.address == 10 then
+		speedL = 0
+		speedR = 0
+		callsub drive
+		fahrmodus = 0
+		call leds.buttons(0,0,0,32)
+	elseif rc5.address == 1 and rc5.command == 1 then
+		speedL = 0
+		speedR = 0
+		callsub drive
+		fahrmodus = 1
+		call leds.buttons(0,0,32,0)
+	end
+# Lichtmodus
+	if  rc5.address == 6 and rc5.command == 1 then
+		lichtmodus = 0
+		call leds.buttons(0,32,0,0)
+	elseif rc5.address == 6 and rc5.command == 2 then
+		lichtmodus = 1
+		call leds.buttons(32,0,0,0)
+	end
+	
+	#Lichtmodus einstellungen
+	if lichtmodus == 1 then
+		if rc5.address == 7 then
+			red = rc5.command
+		elseif rc5.address == 8 then
+			green = rc5.command
+		elseif rc5.address == 9 then
+			blue = rc5.command
+		end
+		call leds.top(red,green,blue)
+	end
+
+	
+	#Modus einstellungen	
+	#Vorwärts Fahren
+	if fahrmodus == 0 then
+		if rc5.address == 2 then
+			speedL = speedL + beschleunigungs_const
+			speedR = speedR + beschleunigungs_const
+			if kurve == 1 then
+				speedL = prevSpeedL
+				speedR = prevSpeedR
+				kurve = 0
+			end
+			callsub drive
+	# Rückwärts Fahren
+		elseif rc5.address == 3 then
+			speedL = speedL - beschleunigungs_const
+			speedR = speedR - beschleunigungs_const
+			#speedL =abs( rc5.command)*(-1)*8
+			#speedR =abs( rc5.command)*(-1)*8
+			if kurve == 1 then
+				speedL = prevSpeedL
+				speedR = prevSpeedR
+				kurve = 0
+			end
+			callsub drive
+	# Stoppen
+		elseif rc5.address == 10 then
+			speedL = 0
+			speedR = 0
+			#speedL =abs( rc5.command)*(-1)*8
+			#speedR =abs( rc5.command)*(-1)*8
+			callsub drive
+	# Rechts fahren
+		elseif rc5.address == 4 then
+			#speedL =abs( rc5.command)*(-1)*8
+			if kurve == 0 then
+				prevSpeedL = speedL
+				prevSpeedR = speedR
+				kurve = 1
+			end
+			if speedL == 0 then
+				speedL = 100
+			end
+			speedR =0
+			callsub drive
+			timer.period[0]=100
+	# Links fahren
+		elseif rc5.address == 5 then
+			#speedR =abs( rc5.command)*(-1)*8
+			if kurve == 0 then
+				prevSpeedL = speedL
+				prevSpeedR = speedR
+				kurve = 1
+			end
+			if speedR == 0 then
+				speedR = 100
+			end
+			speedL =0
+			callsub drive
+			timer.period[0]=100
+		end
+		
+	end
+
+# Alles anhalten
+	if rc5.address == 31 and rc5.command == 31 then
+		lichtmodus = -1
+		fahrmodus = -1
+		call leds.buttons(0,0,0,0)
+		call leds.top(0,0,0)
+		speedL = 0
+		speedR = 0
+		callsub drive
+	end
+	
+	
+onevent timer0
+	speedL = 0
+	speedR = 0
+	if kurve == 1 then
+		speedL = prevSpeedL
+		speedR = prevSpeedR
+		kurve = 0
+	end
+	callsub drive
+	timer.period[0]=0
+	
+onevent prox
+	# Fahrmodus Automatisch
+	if fahrmodus == 1 then
+		if rc5.address == 10 then
+			fahrmodus = 0
+		end
+		if prox.horizontal[1]>500 then
+			motor.left.target=100
+			motor.right.target=-100
+		elseif prox.horizontal[2]>500 then
+			motor.left.target=100
+			motor.right.target=-100
+		elseif prox.horizontal[3]>500 then
+			motor.left.target=-100
+			motor.right.target=100
+		elseif prox.horizontal[4]>500 then
+			motor.left.target=-100
+			motor.right.target=100
+		elseif prox.horizontal[5]>500 then
+			motor.left.target=-100
+			motor.right.target=100
+		else
+			motor.left.target=100
+			motor.right.target=100
+		end
+		call leds.buttons(12,24,32,0)
+		
+	# Mannueller Fahrmodus (Sicherheits funktionen)
+	elseif fahrmodus == 0 then
+		if (prox.horizontal[3]>500 or prox.horizontal[2]>500 or prox.horizontal[4]>500) and hinderniss_stopp == 0 then
+			hinderniss_stopp=1
+			call sound.system(3)
+			speedL = 0
+			speedR = 0
+			callsub drive
+		elseif  (prox.horizontal[3]==0 and prox.horizontal[2]==0 and prox.horizontal[4]==0) and hinderniss_stopp == 1 then
+		hinderniss_stopp=0
+		end
+	end
+	# Lichtmodus dynamischer wechsel
+		if lichtmodus == 0 then
+		if lichtmodus_state==0 then
+				if  red < 32 then
+				red = red +1
+			elseif green < 32 then
+				green = green +1
+			elseif  blue <32 then
+				blue = blue +1
+			else
+			#red =0
+			#green = 0
+			#blue =0
+			lichtmodus_state=1
+			end
+		end
+		if lichtmodus_state==1 then
+			if  red > 0 then
+				red = red -1
+			elseif green > 0 then
+				green = green -1
+			elseif  blue > 0 then
+				blue = blue -1
+			else
+			red =0
+			green = 0
+			blue =0
+			lichtmodus_state=0
+			end
+			
+		end
+
+			call leds.top(red,green,blue)
+	end
+
+
+sub drive
+	motor.left.target = speedL
+	motor.right.target = speedR]]></node>
+
+
+</network>
